@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">MediaGateway</string>
+    <string name="msg_token_fmt">token: %s</string>
+</resources>

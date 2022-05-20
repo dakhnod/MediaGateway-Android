@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "136353423084",
+    "project_id": "mediagateway-3b891",
+    "storage_bucket": "mediagateway-3b891.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:136353423084:android:59db006906ce4693a68fc9",
+        "android_client_info": {
+          "package_name": "d.d.mediagateway"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "136353423084-55odmduhkgu21mb8g525q48keo954c01.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1zIf-h9w1PdGKtl8XAwmaiX2s2sCshH8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "136353423084-55odmduhkgu21mb8g525q48keo954c01.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
