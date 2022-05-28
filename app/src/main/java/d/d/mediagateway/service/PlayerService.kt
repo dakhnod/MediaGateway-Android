@@ -6,6 +6,7 @@ import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
@@ -34,6 +35,16 @@ class PlayerService : Service() {
     val ACTION_NEXT = "action_next"
     val ACTION_PREVIOUS = "action_previous"
     val ACTION_STOP = "action_stop"
+
+    val TIMEOUT_SELF_STOP: Long = 25 * 60 * 1000
+
+    var handler: Handler? = null
+
+    val stopRunnable = Runnable {
+        Log.d(TAG, "stopping service: ")
+        stopSelf()
+        mediaSession?.release()
+    }
 
     override fun onBind(intent: Intent): IBinder {
         TODO("Return the communication channel to the service.")
@@ -82,6 +93,11 @@ class PlayerService : Service() {
         return builder.build()
     }
 
+    private fun restartSelfTimer(){
+        handler?.removeCallbacks(stopRunnable)
+        handler?.postDelayed(stopRunnable, TIMEOUT_SELF_STOP)
+    }
+
     override fun onCreate() {
         super.onCreate()
 
@@ -96,7 +112,7 @@ class PlayerService : Service() {
         mediaSession!!.setPlaybackState(playbackStateBuilder.build())
         mediaSession!!.setCallback(object : MediaSession.Callback() {
             override fun onPlay() {
-                super.onPlay()
+                Log.d(TAG, "onPlay: ")
             }
 
             override fun onPause() {
@@ -127,6 +143,9 @@ class PlayerService : Service() {
 
         notification = buildNotification(false)
         startForeground(1, notification)
+
+        handler = Handler()
+        restartSelfTimer()
     }
 
     companion object {
@@ -176,9 +195,9 @@ class PlayerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand: ")
-        when (intent!!.action) {
-            "d.d.MediaGateway.PLAYBACK_CHANGED" -> {
+        Log.d(TAG, "onStartCommand: ${intent!!.action}")
+        when (intent.action) {
+            MessageService.MESSAGE_TYPE_PLAYBACK_CHANGED -> {
                 if (intent.hasExtra("playbackState")) {
                     val playbackState = intent.getStringExtra("playbackState")
                     val newState = when (playbackState!!.lowercase()) {
@@ -209,8 +228,19 @@ class PlayerService : Service() {
             ACTION_NEXT -> playNext()
             ACTION_PLAY -> play()
             ACTION_PAUSE -> pause()
+            MessageService.MESSAGE_TYPE_PING -> handlePing()
         }
         return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "onDestroy: ")
+    }
+
+    private fun handlePing(){
+        Log.d(TAG, "handlePing: received ping")
+        restartSelfTimer()
     }
 
     private fun registerNotificationChannel() {

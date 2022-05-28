@@ -11,6 +11,11 @@ import java.lang.Exception
 class MessageService : FirebaseMessagingService() {
     private val TAG = "MessageService"
 
+    companion object{
+        const val MESSAGE_TYPE_PLAYBACK_CHANGED = "d.d.MediaGateway.PLAYBACK_CHANGED"
+        const val MESSAGE_TYPE_PING             = "d.d.MediaGateway.PING"
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "onCreate: ")
@@ -40,16 +45,24 @@ class MessageService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
+        Log.d(TAG, "onMessageReceived: priority: ${message.messageId}")
         val data = message.data
+        val type = data["type"]
         val intent = Intent(this, PlayerService::class.java)
-        intent.action = "d.d.MediaGateway.PLAYBACK_CHANGED"
-        for (key in data.keys){
+
+        intent.action = when(type){
+            "player_state" -> MESSAGE_TYPE_PLAYBACK_CHANGED
+            "ping" -> MESSAGE_TYPE_PING
+            else -> return
+        }
+        for (key in data.keys) {
             intent.putExtra(key, data[key])
         }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Log.d(TAG, "onMessageReceived: starting service")
             startForegroundService(intent)
-        }else{
+        } else {
             startService(intent)
         }
     }
