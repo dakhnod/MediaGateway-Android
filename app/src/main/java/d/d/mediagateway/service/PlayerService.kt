@@ -1,23 +1,24 @@
 package d.d.mediagateway.service
 
 import android.app.*
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
-import android.media.MediaMetadata
+import android.content.IntentFilter
+import android.media.*
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.util.Log
-import androidx.core.app.NotificationManagerCompat
+import android.view.KeyEvent
 import com.google.firebase.ktx.Firebase
-import com.google.firebase.messaging.RemoteMessage
 import com.google.firebase.messaging.ktx.messaging
 import com.google.firebase.messaging.ktx.remoteMessage
 import d.d.mediagateway.BuildConfig
 import d.d.mediagateway.R
 import java.util.*
-import kotlin.math.log
 
 
 class PlayerService : Service() {
@@ -44,6 +45,37 @@ class PlayerService : Service() {
         Log.d(TAG, "stopping service: ")
         stopSelf()
         mediaSession?.release()
+    }
+
+    var isPlaying = false
+
+    val keyReceiver = object: BroadcastReceiver() {
+        override fun onReceive(p0: Context?, p1: Intent?) {
+            Log.d(TAG, "onReceive: key")
+            val event = p1?.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            if(event == null){
+                Log.d(TAG, "onReceive: keyEvent empty")
+                return
+            }
+            if(event.action != KeyEvent.ACTION_DOWN){
+                return
+            }
+            Log.d(TAG, "onReceive: $event")
+            handleKeyCode(event.keyCode)
+        }
+    }
+
+    private fun handleKeyCode(keyCode: Int){
+        when(keyCode){
+            KeyEvent.KEYCODE_MEDIA_PLAY -> play()
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> pause()
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> playPrevious()
+            KeyEvent.KEYCODE_MEDIA_NEXT -> playNext()
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if(isPlaying) pause()
+                else play()
+            }
+        }
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -98,37 +130,49 @@ class PlayerService : Service() {
         handler?.postDelayed(stopRunnable, TIMEOUT_SELF_STOP)
     }
 
+    private fun playDummySound(){
+        Log.d(TAG, "playDummySound: playing dummy sound")
+        val bufferSize = AudioRecord.getMinBufferSize(44100, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_8BIT)
+        Log.d(TAG, "playDummySound: $bufferSize")
+        val track = AudioTrack(
+            AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .build(),
+            AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_8BIT)
+                .setSampleRate(44100)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build(),
+            bufferSize,
+            AudioTrack.MODE_STATIC,
+            AudioManager.AUDIO_SESSION_ID_GENERATE
+        )
+        track.write(ByteArray(bufferSize), 0, 1)
+        track.play()
+    }
+
     override fun onCreate() {
         super.onCreate()
 
         Log.d(TAG, "onCreate: ")
 
         mediaSession = MediaSession(this, "player")
+        mediaSession!!.isActive = true
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             mediaSession!!.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
         }
+        mediaSession!!.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
         playbackStateBuilder
             .setState(PlaybackState.STATE_CONNECTING, 0, 1.0f)
+            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE)
         mediaSession!!.setPlaybackState(playbackStateBuilder.build())
         mediaSession!!.setCallback(object : MediaSession.Callback() {
-            override fun onPlay() {
-                Log.d(TAG, "onPlay: ")
-            }
-
-            override fun onPause() {
-                super.onPause()
-            }
-
-            override fun onSkipToNext() {
-                super.onSkipToNext()
-            }
-
-            override fun onSkipToPrevious() {
-                super.onSkipToPrevious()
-            }
-
             override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
                 Log.d(TAG, "onMediaButtonEvent: ")
+                val event =
+                    mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
+                handleKeyCode(event.keyCode)
                 return true
             }
         })
@@ -137,7 +181,6 @@ class PlayerService : Service() {
             .putText(MediaMetadata.METADATA_KEY_ARTIST, "-")
             .build()
         mediaSession!!.setMetadata(metadata)
-        mediaSession!!.isActive = true
 
         registerNotificationChannel()
 
@@ -146,6 +189,9 @@ class PlayerService : Service() {
 
         handler = Handler()
         restartSelfTimer()
+        playDummySound()
+
+        registerReceiver(keyReceiver, IntentFilter(Intent.ACTION_MEDIA_BUTTON))
     }
 
     companion object {
@@ -181,6 +227,7 @@ class PlayerService : Service() {
     }
 
     private fun setPlayingState(is_playing: Boolean){
+        isPlaying = is_playing
         startForeground(1, buildNotification(is_playing))
     }
 
@@ -206,10 +253,11 @@ class PlayerService : Service() {
                         "stopped" -> PlaybackState.STATE_STOPPED
                         else -> PlaybackState.STATE_ERROR
                     }
-                    Log.d(TAG, "onStartCommand: $newState")
+                    Log.d(TAG, "onStartCommand: new state: $newState")
                     mediaSession!!.setPlaybackState(
                         playbackStateBuilder
                             .setState(newState, 0, 1.0f)
+                            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE)
                             .build()
                     )
                     setPlayingState(
@@ -230,12 +278,14 @@ class PlayerService : Service() {
             ACTION_PAUSE -> pause()
             MessageService.MESSAGE_TYPE_PING -> handlePing()
         }
+        // playDummySound()
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy: ")
+        unregisterReceiver(keyReceiver)
     }
 
     private fun handlePing(){
